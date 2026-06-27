@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          $src = "target/release/muka-taskswitch.exe"
+          $dest = "dist/muka-taskswitch.exe"
+          Copy-Item $src $dest
+          $hash = (Get-FileHash $dest -Algorithm SHA256).Hash
+          "$hash  muka-taskswitch.exe" | Out-File -Encoding utf8 dist/muka-taskswitch.exe.sha256
+          Compress-Archive -Path $dest -DestinationPath dist/muka-taskswitch.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muka-taskswitch-release
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: muka-taskswitch-release
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/muka-taskswitch.exe
+            dist/muka-taskswitch.zip
+            dist/muka-taskswitch.exe.sha256
+          generate_release_notes: true
